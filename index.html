@@ -313,13 +313,14 @@ function renderTable(){
   tfoot.id='grand-total';
   tfoot.innerHTML='<tr style="background:#1e429f;color:#fff;font-weight:700">'+cols.map((c,i)=>{
     if(i===0) return `<td style="padding:8px 12px;white-space:nowrap">รวมทั้งหมด (${data.length})</td>`;
-    if(c.k==='l2'||c.k==='bc'||c.k==='k') return `<td></td>`;
+    if(c.k==='l2'||c.k==='bc') return `<td></td>`;
     if(c.k==='q'||c.k==='qty') return `<td class="r" style="padding:8px 12px">${fmt(totQ)}</td>`;
     if(c.k==='la') return `<td class="r" style="padding:8px 12px">${fmt(totLa)}</td>`;
     if(c.k==='d'||c.k==='disc') return `<td class="r" style="padding:8px 12px">${fmt(totD)}</td>`;
     if(c.k==='ns') return `<td class="r" style="padding:8px 12px">${fmt(totNs)}</td>`;
-    if(c.k==='g'||c.k==='gp') return `<td class="r" style="padding:8px 12px">${fmt(totG)}</td>`;
-    if(c.k==='gpp') return `<td class="r" style="padding:8px 12px">${fmtD(totGpPct)}%</td>`;
+    // detail: gp=GP฿, gpp=%GP | aggregate: g=GP฿, gp=%GP
+    if(c.k==='gpp'||(c.k==='gp'&&curView!=='detail')) return `<td class="r" style="padding:8px 12px">${fmtD(totGpPct)}%</td>`;
+    if(c.k==='g'||(c.k==='gp'&&curView==='detail')) return `<td class="r" style="padding:8px 12px">${fmt(totG)}</td>`;
     return `<td></td>`;
   }).join('')+'</tr>';
   document.querySelector('table').appendChild(tfoot);
