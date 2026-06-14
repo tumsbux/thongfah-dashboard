@@ -94,6 +94,10 @@ tbody td.r{text-align:right}
         <input type="text" id="f-prod" placeholder="พิมพ์เพื่อค้นหา..." onkeydown="if(event.key==='Enter')applyFilter()">
       </div>
       <div class="filter-group">
+        <label>🏷️ ประเภทโปร</label>
+        <select id="f-promo"><option value="">ทั้งหมด</option></select>
+      </div>
+      <div class="filter-group">
         <label>&nbsp;</label>
         <div style="display:flex;gap:6px">
           <button class="btn btn-primary" onclick="applyFilter()">กรอง</button>
@@ -121,6 +125,8 @@ tbody td.r{text-align:right}
             <button class="tab" onclick="setView('store')">รายร้าน</button>
             <button class="tab" onclick="setView('prod')">รายสินค้า</button>
             <button class="tab" onclick="setView('dm')">รายDM</button>
+            <button class="tab" onclick="setView('promo')">รายประเภทโปร</button>
+            <button class="tab" onclick="setView('rm')">รายRM</button>
           </div>
         </div>
       </div>
@@ -133,7 +139,7 @@ tbody td.r{text-align:right}
 
 <script>
 // Array fields: [dm, store, store_code, barcode, product, qty, solineamt, discount, net_sales, cost, gp, gp_pct]
-const DM=0,ST=1,SC=2,BC=3,PR=4,QT=5,LA=6,DS=7,NS=8,CO=9,GP=10,GP_PCT=11;
+const DM=0,ST=1,SC=2,BC=3,PR=4,QT=5,LA=6,DS=7,NS=8,CO=9,GP=10,GP_PCT=11,PT=12,RM=13;
 let RAW=[],filtered=[],sortCol=null,sortAsc=true,curView='detail';
 let chStore=null,chProd=null;
 
@@ -156,6 +162,9 @@ function initFilters(){
   const fd=document.getElementById('f-dm');
   dms.forEach(d=>{fd.add(new Option(d,d));});
   fd.onchange=updateStoreDD;
+  const promos=[...new Set(RAW.map(r=>r[PT]||'').filter(Boolean))].sort();
+  const fp=document.getElementById('f-promo');
+  promos.forEach(p=>{fp.add(new Option(p,p));});
 }
 function updateStoreDD(){
   const dm=document.getElementById('f-dm').value;
@@ -168,18 +177,20 @@ function applyFilter(){
   const dm=document.getElementById('f-dm').value;
   const st=document.getElementById('f-store').value;
   const q=document.getElementById('f-prod').value.toLowerCase().trim();
-  filtered=RAW.filter(r=>(!dm||r[DM]===dm)&&(!st||r[ST]===st)&&(!q||r[BC].includes(q)||r[PR].toLowerCase().includes(q)));
+  const pt=document.getElementById('f-promo').value;
+  filtered=RAW.filter(r=>(!dm||r[DM]===dm)&&(!st||r[ST]===st)&&(!q||r[BC].includes(q)||r[PR].toLowerCase().includes(q))&&(!pt||r[PT]===pt));
   sortCol=null; renderAll();
 }
 function resetFilter(){
   document.getElementById('f-dm').value=''; updateStoreDD();
   document.getElementById('f-store').value='';
   document.getElementById('f-prod').value='';
+  document.getElementById('f-promo').value='';
   filtered=[...RAW]; sortCol=null; renderAll();
 }
 function setView(v){
   curView=v; sortCol=null;
-  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('active',['detail','store','prod','dm'][i]===v));
+  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('active',['detail','store','prod','dm','promo','rm'][i]===v));
   renderTable();
 }
 
@@ -247,13 +258,17 @@ const VCOLS={
   ],
   store:[{l:'ร้าน',k:'k',r:0},{l:'DM',k:'l2',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'d',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}],
   prod:[{l:'บาร์โค้ด',k:'k',r:0},{l:'ชื่อสินค้า',k:'l2',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'d',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}],
-  dm:[{l:'DM',k:'k',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'d',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}]
+  dm:[{l:'DM',k:'k',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'d',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}],
+  promo:[{l:'ประเภทโปร',k:'k',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'d',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}],
+  rm:[{l:'RM',k:'k',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'d',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}]
 };
 
 function getViewData(){
   if(curView==='detail') return filtered.map(r=>({dm:r[DM],store:r[ST],bc:r[BC],prod:r[PR],qty:+r[QT],la:+r[LA],disc:+r[DS],ns:+r[NS],gp:+r[GP],gpp:+r[GP_PCT]}));
   if(curView==='store') return aggBy(ST,DM);
   if(curView==='prod') return aggBy(BC,PR);
+  if(curView==='promo') return aggBy(PT,null);
+  if(curView==='rm') return aggBy(RM,null);
   return aggBy(DM,null);
 }
 
@@ -286,6 +301,28 @@ function renderTable(){
     if(IS_BC(c,v)) return `<td><span class="pill">${v||''}</span></td>`;
     return `<td>${v!=null?v:''}</td>`;
   }).join('')+'</tr>').join('');
+  // Grand total footer
+  const oldFoot=document.getElementById('grand-total'); if(oldFoot)oldFoot.remove();
+  const totQ=data.reduce((s,r)=>s+(+(r.q||r.qty)||0),0);
+  const totLa=data.reduce((s,r)=>s+(+r.la||0),0);
+  const totD=data.reduce((s,r)=>s+(+(r.d||r.disc)||0),0);
+  const totNs=data.reduce((s,r)=>s+(+r.ns||0),0);
+  const totG=data.reduce((s,r)=>s+(+(r.g||r.gp)||0),0);
+  const totGpPct=totNs?totG/totNs*100:0;
+  const tfoot=document.createElement('tfoot');
+  tfoot.id='grand-total';
+  tfoot.innerHTML='<tr style="background:#1e429f;color:#fff;font-weight:700">'+cols.map((c,i)=>{
+    if(i===0) return `<td style="padding:8px 12px;white-space:nowrap">รวมทั้งหมด (${data.length})</td>`;
+    if(c.k==='l2'||c.k==='bc'||c.k==='k') return `<td></td>`;
+    if(c.k==='q'||c.k==='qty') return `<td class="r" style="padding:8px 12px">${fmt(totQ)}</td>`;
+    if(c.k==='la') return `<td class="r" style="padding:8px 12px">${fmt(totLa)}</td>`;
+    if(c.k==='d'||c.k==='disc') return `<td class="r" style="padding:8px 12px">${fmt(totD)}</td>`;
+    if(c.k==='ns') return `<td class="r" style="padding:8px 12px">${fmt(totNs)}</td>`;
+    if(c.k==='g'||c.k==='gp') return `<td class="r" style="padding:8px 12px">${fmt(totG)}</td>`;
+    if(c.k==='gpp') return `<td class="r" style="padding:8px 12px">${fmtD(totGpPct)}%</td>`;
+    return `<td></td>`;
+  }).join('')+'</tr>';
+  document.querySelector('table').appendChild(tfoot);
 }
 function doSort(i){if(sortCol===i)sortAsc=!sortAsc;else{sortCol=i;sortAsc=true;}renderTable();}
 function renderAll(){renderCards();renderCharts();renderTable();}
