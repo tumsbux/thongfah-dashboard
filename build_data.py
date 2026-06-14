@@ -141,7 +141,7 @@ WHERE f.iprod IN ({bc_list})
   AND f.solinetype NOT IN ('C','R')
   AND CAST(f.sotowhs AS UNSIGNED) <= 500
 GROUP BY b.dm, b.name, f.sotowhs, f.iprod, DATE(f.sodate)
-ORDER BY sodate, b.dm, b.name, f.iprod
+ORDER BY DATE(f.sodate), b.dm, b.name, f.iprod
 """
 cur.execute(SQL)
 db_rows = cur.fetchall()
