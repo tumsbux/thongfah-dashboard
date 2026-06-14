@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>กิจกรรมธงฟ้า — Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Sarabun',Tahoma,sans-serif;background:#f0f4f8;color:#1a202c;font-size:14px}
+header{background:linear-gradient(135deg,#1a56db,#1e429f);color:#fff;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+header h1{font-size:20px;font-weight:700}
+header .sub{font-size:12px;opacity:.85;margin-top:3px}
+.badge{background:rgba(255,255,255,.2);border-radius:20px;padding:2px 10px;font-size:11px}
+.loading{display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;gap:12px;color:#6b7280}
+.spinner{width:40px;height:40px;border:4px solid #e5e7eb;border-top-color:#1a56db;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.container{max-width:1400px;margin:0 auto;padding:16px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px;margin-bottom:14px}
+.card{background:#fff;border-radius:10px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.08);border-left:4px solid #1a56db}
+.card.green{border-color:#0e9f6e}.card.orange{border-color:#ff5a1f}.card.purple{border-color:#7e3af2}.card.teal{border-color:#0694a2}
+.card-label{font-size:11px;color:#6b7280;margin-bottom:4px;font-weight:600}
+.card-value{font-size:22px;font-weight:700;color:#111827}
+.card-sub{font-size:11px;color:#9ca3af;margin-top:2px}
+.filters{background:#fff;border-radius:10px;padding:12px 16px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.filter-group{display:flex;flex-direction:column;gap:3px;min-width:155px}
+.filter-group label{font-size:11px;color:#6b7280;font-weight:700}
+select,input{border:1px solid #d1d5db;border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit;outline:none;background:#fff}
+select:focus,input:focus{border-color:#1a56db;box-shadow:0 0 0 2px rgba(26,86,219,.15)}
+.btn{padding:7px 16px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-family:inherit;font-weight:600}
+.btn-primary{background:#1a56db;color:#fff}.btn-primary:hover{background:#1e429f}
+.btn-outline{background:#fff;color:#374151;border:1px solid #d1d5db}.btn-outline:hover{background:#f9fafb}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+@media(max-width:768px){.charts{grid-template-columns:1fr}}
+.chart-card{background:#fff;border-radius:10px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.chart-title{font-size:13px;font-weight:700;color:#374151;margin-bottom:10px}
+.table-wrap{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden}
+.table-header{padding:10px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f3f4f6;flex-wrap:wrap;gap:8px}
+.table-header h3{font-size:14px;font-weight:700}
+.row-count{font-size:12px;color:#6b7280}
+.tbl-scroll{overflow-x:auto;max-height:560px;overflow-y:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{background:#f8fafc;padding:9px 12px;text-align:left;font-weight:700;color:#374151;position:sticky;top:0;z-index:2;white-space:nowrap;cursor:pointer;user-select:none}
+thead th:hover{background:#e5e7eb}
+thead th.r{text-align:right}
+tbody tr:hover{background:#f0f7ff}
+tbody td{padding:7px 12px;border-bottom:1px solid #f3f4f6;white-space:nowrap}
+tbody td.r{text-align:right}
+.gp-good{color:#0e9f6e;font-weight:600}
+.gp-mid{color:#c27803;font-weight:600}
+.gp-low{color:#e02424;font-weight:600}
+.pill{display:inline-block;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600;background:#ebf5ff;color:#1a56db}
+.sort-asc::after{content:' ▲';font-size:9px;opacity:.7}
+.sort-desc::after{content:' ▼';font-size:9px;opacity:.7}
+.no-data{text-align:center;padding:40px;color:#9ca3af}
+.tabs{display:flex;gap:5px;flex-wrap:wrap}
+.tab{padding:5px 12px;border-radius:6px;border:1px solid #d1d5db;background:#fff;font-size:12px;cursor:pointer;font-family:inherit}
+.tab.active{background:#1a56db;color:#fff;border-color:#1a56db}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>🏪 กิจกรรมธงฟ้า — Sales Dashboard</h1>
+    <div class="sub">ยอดขายสินค้าธงฟ้า ตั้งแต่ 01 พ.ค. 2569 &nbsp;<span class="badge" id="data-badge">กำลังโหลด...</span></div>
+  </div>
+  <div style="text-align:right;font-size:12px;opacity:.85;line-height:1.6" id="hdr-sum"></div>
+</header>
+
+<div class="container">
+  <div id="loading-area" class="loading">
+    <div class="spinner"></div>
+    <div>กำลังโหลดข้อมูล...</div>
+  </div>
+  <div id="main-area" style="display:none">
+    <div class="cards">
+      <div class="card"><div class="card-label">ยอดขายสุทธิ (บาท)</div><div class="card-value" id="c-sales"></div><div class="card-sub" id="c-sales-s"></div></div>
+      <div class="card green"><div class="card-label">GP รวม (บาท)</div><div class="card-value" id="c-gp"></div><div class="card-sub" id="c-gp-s"></div></div>
+      <div class="card orange"><div class="card-label">ส่วนลดรวม (บาท)</div><div class="card-value" id="c-disc"></div><div class="card-sub" id="c-disc-s"></div></div>
+      <div class="card purple"><div class="card-label">จำนวนขาย (ชิ้น)</div><div class="card-value" id="c-qty"></div><div class="card-sub" id="c-qty-s"></div></div>
+      <div class="card teal"><div class="card-label">ร้านที่ขาย</div><div class="card-value" id="c-stores"></div><div class="card-sub" id="c-stores-s"></div></div>
+    </div>
+    <div class="filters">
+      <div class="filter-group">
+        <label>🧭 DM</label>
+        <select id="f-dm"><option value="">ทั้งหมด</option></select>
+      </div>
+      <div class="filter-group">
+        <label>🏪 ร้าน</label>
+        <select id="f-store"><option value="">ทั้งหมด</option></select>
+      </div>
+      <div class="filter-group" style="min-width:210px">
+        <label>🔍 สินค้า (บาร์โค้ด / ชื่อ)</label>
+        <input type="text" id="f-prod" placeholder="พิมพ์เพื่อค้นหา..." onkeydown="if(event.key==='Enter')applyFilter()">
+      </div>
+      <div class="filter-group">
+        <label>&nbsp;</label>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-primary" onclick="applyFilter()">กรอง</button>
+          <button class="btn btn-outline" onclick="resetFilter()">รีเซ็ต</button>
+        </div>
+      </div>
+    </div>
+    <div class="charts">
+      <div class="chart-card">
+        <div class="chart-title">📊 ยอดขายสุทธิ Top 10 ร้าน (บาท)</div>
+        <canvas id="ch-store" height="230"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">🛒 Top 10 สินค้าขายดี (จำนวนชิ้น)</div>
+        <canvas id="ch-prod" height="230"></canvas>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-header">
+        <h3>รายละเอียด</h3>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span class="row-count" id="row-count"></span>
+          <div class="tabs">
+            <button class="tab active" onclick="setView('detail')">รายสินค้า-ร้าน</button>
+            <button class="tab" onclick="setView('store')">รายร้าน</button>
+            <button class="tab" onclick="setView('prod')">รายสินค้า</button>
+            <button class="tab" onclick="setView('dm')">รายDM</button>
+          </div>
+        </div>
+      </div>
+      <div class="tbl-scroll">
+        <table><thead id="th"></thead><tbody id="tb"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Array fields: [dm, store, store_code, barcode, product, qty, solineamt, discount, net_sales, cost, gp, gp_pct]
+const DM=0,ST=1,SC=2,BC=3,PR=4,QT=5,LA=6,DS=7,NS=8,CO=9,GP=10,GP_PCT=11;
+let RAW=[],filtered=[],sortCol=null,sortAsc=true,curView='detail';
+let chStore=null,chProd=null;
+
+const fmt=n=>(+n||0).toLocaleString('th-TH',{maximumFractionDigits:0});
+const fmtD=n=>(+n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
+const gpC=p=>p>=30?'gp-good':p>=15?'gp-mid':'gp-low';
+
+fetch('data.json').then(r=>r.json()).then(data=>{
+  RAW=data; filtered=[...RAW];
+  document.getElementById('loading-area').style.display='none';
+  document.getElementById('main-area').style.display='block';
+  document.getElementById('data-badge').textContent=RAW.length.toLocaleString()+' รายการ | 1 พ.ค. – 12 มิ.ย. 69';
+  initFilters(); renderAll();
+}).catch(e=>{
+  document.getElementById('loading-area').innerHTML='<div style="color:#e02424;padding:20px">โหลดข้อมูลไม่สำเร็จ: '+e.message+'</div>';
+});
+
+function initFilters(){
+  const dms=[...new Set(RAW.map(r=>r[DM]))].sort();
+  const fd=document.getElementById('f-dm');
+  dms.forEach(d=>{fd.add(new Option(d,d));});
+  fd.onchange=updateStoreDD;
+}
+function updateStoreDD(){
+  const dm=document.getElementById('f-dm').value;
+  const fs=document.getElementById('f-store');
+  fs.innerHTML='<option value="">ทั้งหมด</option>';
+  [...new Set(RAW.filter(r=>!dm||r[DM]===dm).map(r=>r[ST]))].sort()
+    .forEach(s=>fs.add(new Option(s,s)));
+}
+function applyFilter(){
+  const dm=document.getElementById('f-dm').value;
+  const st=document.getElementById('f-store').value;
+  const q=document.getElementById('f-prod').value.toLowerCase().trim();
+  filtered=RAW.filter(r=>(!dm||r[DM]===dm)&&(!st||r[ST]===st)&&(!q||r[BC].includes(q)||r[PR].toLowerCase().includes(q)));
+  sortCol=null; renderAll();
+}
+function resetFilter(){
+  document.getElementById('f-dm').value=''; updateStoreDD();
+  document.getElementById('f-store').value='';
+  document.getElementById('f-prod').value='';
+  filtered=[...RAW]; sortCol=null; renderAll();
+}
+function setView(v){
+  curView=v; sortCol=null;
+  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('active',['detail','store','prod','dm'][i]===v));
+  renderTable();
+}
+
+function aggBy(fi,fi2){
+  const m={};
+  filtered.forEach(r=>{
+    const k=r[fi]; if(!m[k])m[k]={k,l2:fi2!=null?r[fi2]:'',q:0,la:0,d:0,ns:0,c:0,g:0};
+    const x=m[k]; x.q+=+r[QT]; x.la+=+r[LA]; x.d+=+r[DS]; x.ns+=+r[NS]; x.c+=+r[CO]; x.g+=+r[GP];
+  });
+  return Object.values(m).map(x=>{x.gp=x.ns?x.g/x.ns*100:0;return x;});
+}
+
+function renderCards(){
+  const ns=filtered.reduce((a,r)=>a+(+r[NS]),0);
+  const gp=filtered.reduce((a,r)=>a+(+r[GP]),0);
+  const disc=filtered.reduce((a,r)=>a+(+r[DS]),0);
+  const qty=filtered.reduce((a,r)=>a+(+r[QT]),0);
+  const la=filtered.reduce((a,r)=>a+(+r[LA]),0);
+  const stores=new Set(filtered.map(r=>r[ST])).size;
+  const dms=new Set(filtered.map(r=>r[DM])).size;
+  const gpp=ns?gp/ns*100:0;
+  document.getElementById('c-sales').textContent='฿'+fmt(ns);
+  document.getElementById('c-sales-s').textContent='solineamt ฿'+fmt(la);
+  document.getElementById('c-gp').textContent='฿'+fmt(gp);
+  document.getElementById('c-gp-s').textContent='%GP '+fmtD(gpp)+'%';
+  document.getElementById('c-disc').textContent='฿'+fmt(disc);
+  document.getElementById('c-disc-s').textContent=(la?fmtD(disc/la*100):'0.00')+'% ของ solineamt';
+  document.getElementById('c-qty').textContent=fmt(qty);
+  document.getElementById('c-qty-s').textContent=new Set(filtered.map(r=>r[BC])).size+' รายการสินค้า';
+  document.getElementById('c-stores').textContent=fmt(stores);
+  document.getElementById('c-stores-s').textContent='จาก '+dms+' DM';
+  document.getElementById('hdr-sum').innerHTML='ยอดสุทธิ ฿'+fmt(ns)+'<br>GP '+fmtD(gpp)+'% | '+stores+' ร้าน | '+dms+' DM';
+}
+
+function renderCharts(){
+  const byStore=aggBy(ST,DM).sort((a,b)=>b.ns-a.ns).slice(0,10);
+  if(chStore)chStore.destroy();
+  chStore=new Chart(document.getElementById('ch-store'),{type:'bar',data:{
+    labels:byStore.map(r=>r.k),
+    datasets:[
+      {label:'ยอดขายสุทธิ',data:byStore.map(r=>r.ns),backgroundColor:'rgba(26,86,219,.75)',borderRadius:4},
+      {label:'GP',data:byStore.map(r=>r.g),backgroundColor:'rgba(14,159,110,.75)',borderRadius:4}
+    ]
+  },options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{position:'bottom',labels:{font:{size:11}}}},
+    scales:{y:{ticks:{callback:v=>'฿'+fmt(v),font:{size:11}}},x:{ticks:{font:{size:10}}}}
+  }});
+
+  const byProd=aggBy(BC,PR).sort((a,b)=>b.q-a.q).slice(0,10);
+  if(chProd)chProd.destroy();
+  chProd=new Chart(document.getElementById('ch-prod'),{type:'bar',data:{
+    labels:byProd.map(r=>r.l2.length>24?r.l2.slice(0,24)+'…':r.l2),
+    datasets:[{label:'จำนวน(ชิ้น)',data:byProd.map(r=>r.q),backgroundColor:'rgba(126,58,242,.75)',borderRadius:4}]
+  },options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false}},
+    scales:{x:{ticks:{font:{size:11}}},y:{ticks:{font:{size:11}}}}
+  }});
+}
+
+const VCOLS={
+  detail:[
+    {l:'DM',k:'dm',r:0},{l:'ร้าน',k:'store',r:0},{l:'บาร์โค้ด',k:'bc',r:0},{l:'ชื่อสินค้า',k:'prod',r:0},
+    {l:'จำนวน(ชิ้น)',k:'qty',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'disc',r:1},
+    {l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'gp',r:1},{l:'%GP',k:'gpp',r:1}
+  ],
+  store:[{l:'ร้าน',k:'k',r:0},{l:'DM',k:'l2',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'d',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}],
+  prod:[{l:'บาร์โค้ด',k:'k',r:0},{l:'ชื่อสินค้า',k:'l2',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'d',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}],
+  dm:[{l:'DM',k:'k',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'d',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}]
+};
+
+function getViewData(){
+  if(curView==='detail') return filtered.map(r=>({dm:r[DM],store:r[ST],bc:r[BC],prod:r[PR],qty:+r[QT],la:+r[LA],disc:+r[DS],ns:+r[NS],gp:+r[GP],gpp:+r[GP_PCT]}));
+  if(curView==='store') return aggBy(ST,DM);
+  if(curView==='prod') return aggBy(BC,PR);
+  return aggBy(DM,null);
+}
+
+function renderTable(){
+  const cols=VCOLS[curView];
+  let data=getViewData();
+  if(sortCol!=null){
+    const k=cols[sortCol].k;
+    data.sort((a,b)=>{
+      const av=typeof a[k]==='number'?a[k]:(a[k]||'');
+      const bv=typeof b[k]==='number'?b[k]:(b[k]||'');
+      return sortAsc?(av>bv?1:av<bv?-1:0):(av<bv?1:av>bv?-1:0);
+    });
+  }
+  document.getElementById('th').innerHTML='<tr>'+cols.map((c,i)=>{
+    const sc=sortCol===i?(sortAsc?' sort-asc':' sort-desc'):'';
+    return `<th class="${c.r?'r':''}${sc}" onclick="doSort(${i})">${c.l}</th>`;
+  }).join('')+'</tr>';
+  document.getElementById('row-count').textContent=data.length.toLocaleString()+' รายการ';
+  const tb=document.getElementById('tb');
+  if(!data.length){tb.innerHTML=`<tr><td colspan="${cols.length}" class="no-data">ไม่พบข้อมูล</td></tr>`;return;}
+  const IS_BC=(c,v)=>(c.k==='bc')||(c.k==='k'&&curView==='prod');
+  tb.innerHTML=data.slice(0,3000).map(r=>'<tr>'+cols.map(c=>{
+    const v=r[c.k];
+    if(c.k==='gpp'||c.k==='gp'&&c.r&&!['detail'].includes(curView)){
+      const p=+v||0;
+      return `<td class="r ${gpC(p)}">${fmtD(p)}%</td>`;
+    }
+    if(c.r&&typeof v==='number') return `<td class="r">${fmt(v)}</td>`;
+    if(IS_BC(c,v)) return `<td><span class="pill">${v||''}</span></td>`;
+    return `<td>${v!=null?v:''}</td>`;
+  }).join('')+'</tr>').join('');
+}
+function doSort(i){if(sortCol===i)sortAsc=!sortAsc;else{sortCol=i;sortAsc=true;}renderTable();}
+function renderAll(){renderCards();renderCharts();renderTable();}
+</script>
+</body>
+</html>
