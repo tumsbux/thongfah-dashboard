@@ -97,6 +97,14 @@ tbody td.r{text-align:right}
         <label>🏷️ ประเภทโปร</label>
         <select id="f-promo"><option value="">ทั้งหมด</option></select>
       </div>
+      <div class="filter-group" style="min-width:130px">
+        <label>📅 ตั้งแต่วันที่</label>
+        <input type="date" id="f-date-from">
+      </div>
+      <div class="filter-group" style="min-width:130px">
+        <label>📅 ถึงวันที่</label>
+        <input type="date" id="f-date-to">
+      </div>
       <div class="filter-group">
         <label>&nbsp;</label>
         <div style="display:flex;gap:6px">
@@ -138,8 +146,8 @@ tbody td.r{text-align:right}
 </div>
 
 <script>
-// Array fields: [dm, store, store_code, barcode, product, qty, solineamt, discount, net_sales, cost, gp, gp_pct]
-const DM=0,ST=1,SC=2,BC=3,PR=4,QT=5,LA=6,DS=7,NS=8,CO=9,GP=10,GP_PCT=11,PT=12,RM=13;
+// Array fields: [dm, store, store_code, barcode, product, qty, solineamt, discount, net_sales, cost, gp, gp_pct, promo, rm, date]
+const DM=0,ST=1,SC=2,BC=3,PR=4,QT=5,LA=6,DS=7,NS=8,CO=9,GP=10,GP_PCT=11,PT=12,RM=13,DT=14;
 let RAW=[],filtered=[],sortCol=null,sortAsc=true,curView='detail';
 let chStore=null,chProd=null;
 
@@ -151,7 +159,16 @@ fetch('data.json').then(r=>r.json()).then(data=>{
   RAW=data; filtered=[...RAW];
   document.getElementById('loading-area').style.display='none';
   document.getElementById('main-area').style.display='block';
-  document.getElementById('data-badge').textContent=RAW.length.toLocaleString()+' รายการ | 1 พ.ค. – 12 มิ.ย. 69';
+  const _bd=RAW.map(r=>r[DT]).filter(Boolean).sort();
+  document.getElementById('data-badge').textContent=RAW.length.toLocaleString()+' รายการ | '+(_bd[0]||'1 พ.ค.')+' – '+(_bd[_bd.length-1]||'');
+  const _dates=RAW.map(r=>r[DT]).filter(Boolean).sort();
+  if(_dates.length){
+    const _mn=_dates[0],_mx=_dates[_dates.length-1];
+    const fdf=document.getElementById('f-date-from');
+    const fdt=document.getElementById('f-date-to');
+    fdf.min=_mn; fdf.max=_mx; fdf.value=_mn;
+    fdt.min=_mn; fdt.max=_mx; fdt.value=_mx;
+  }
   initFilters(); renderAll();
 }).catch(e=>{
   document.getElementById('loading-area').innerHTML='<div style="color:#e02424;padding:20px">โหลดข้อมูลไม่สำเร็จ: '+e.message+'</div>';
@@ -178,7 +195,9 @@ function applyFilter(){
   const st=document.getElementById('f-store').value;
   const q=document.getElementById('f-prod').value.toLowerCase().trim();
   const pt=document.getElementById('f-promo').value;
-  filtered=RAW.filter(r=>(!dm||r[DM]===dm)&&(!st||r[ST]===st)&&(!q||r[BC].includes(q)||r[PR].toLowerCase().includes(q))&&(!pt||r[PT]===pt));
+  const df=document.getElementById('f-date-from').value;
+  const dt=document.getElementById('f-date-to').value;
+  filtered=RAW.filter(r=>(!dm||r[DM]===dm)&&(!st||r[ST]===st)&&(!q||r[BC].includes(q)||r[PR].toLowerCase().includes(q))&&(!pt||r[PT]===pt)&&(!df||!r[DT]||r[DT]>=df)&&(!dt||!r[DT]||r[DT]<=dt));
   sortCol=null; renderAll();
 }
 function resetFilter(){
@@ -186,6 +205,8 @@ function resetFilter(){
   document.getElementById('f-store').value='';
   document.getElementById('f-prod').value='';
   document.getElementById('f-promo').value='';
+  const _rd=RAW.map(r=>r[DT]).filter(Boolean).sort();
+  if(_rd.length){document.getElementById('f-date-from').value=_rd[0];document.getElementById('f-date-to').value=_rd[_rd.length-1];}
   filtered=[...RAW]; sortCol=null; renderAll();
 }
 function setView(v){
@@ -293,7 +314,7 @@ function renderTable(){
   const IS_BC=(c,v)=>(c.k==='bc')||(c.k==='k'&&curView==='prod');
   tb.innerHTML=data.slice(0,3000).map(r=>'<tr>'+cols.map(c=>{
     const v=r[c.k];
-    if(c.k==='gpp'||c.k==='gp'&&c.r&&!['detail'].includes(curView)){
+    if(c.k==='gpp'||(c.k==='gp'&&c.r&&curView!=='detail')){
       const p=+v||0;
       return `<td class="r ${gpC(p)}">${fmtD(p)}%</td>`;
     }
@@ -307,13 +328,13 @@ function renderTable(){
   const totLa=data.reduce((s,r)=>s+(+r.la||0),0);
   const totD=data.reduce((s,r)=>s+(+(r.d||r.disc)||0),0);
   const totNs=data.reduce((s,r)=>s+(+r.ns||0),0);
-  const totG=data.reduce((s,r)=>s+(+(r.g||r.gp)||0),0);
+  const totG=data.reduce((s,r)=>s+(+(curView==='detail'?r.gp:r.g)||0),0);
   const totGpPct=totNs?totG/totNs*100:0;
   const tfoot=document.createElement('tfoot');
   tfoot.id='grand-total';
   tfoot.innerHTML='<tr style="background:#1e429f;color:#fff;font-weight:700">'+cols.map((c,i)=>{
     if(i===0) return `<td style="padding:8px 12px;white-space:nowrap">รวมทั้งหมด (${data.length})</td>`;
-    if(c.k==='l2'||c.k==='bc') return `<td></td>`;
+    if(c.k==='l2'||c.k==='bc'||c.k==='k'||c.k==='store'||c.k==='dm'||c.k==='prod') return `<td></td>`;
     if(c.k==='q'||c.k==='qty') return `<td class="r" style="padding:8px 12px">${fmt(totQ)}</td>`;
     if(c.k==='la') return `<td class="r" style="padding:8px 12px">${fmt(totLa)}</td>`;
     if(c.k==='d'||c.k==='disc') return `<td class="r" style="padding:8px 12px">${fmt(totD)}</td>`;
