@@ -1,0 +1,30 @@
+name: Daily Thongfah Update
+
+on:
+  schedule:
+    - cron: '35 1 * * *'
+  workflow_dispatch:
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install mysql-connector-python
+      - name: Build data.json
+        env:
+          MYSQL_HOST:     ${{ secrets.MYSQL_HOST }}
+          MYSQL_PORT:     ${{ secrets.MYSQL_PORT }}
+          MYSQL_USER:     ${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+        run: python build_data.py
+      - name: Push
+        run: |
+          git config user.name "dashboard-bot"
+          git config user.email "bot@noreply"
+          git add data.json
+          git diff --staged --quiet && echo "no change" || git commit -m "auto: update data.json $(date -u '+%Y-%m-%d')"
+          git push
