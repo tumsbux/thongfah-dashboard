@@ -134,12 +134,12 @@ SELECT
     b.dm, b.name, f.sotowhs, f.iprod,
     SUM(f.net_qty), SUM(f.solineamt), SUM(f.prorated_discount),
     SUM(f.net_sales_amt), SUM(f.total_cost), DATE(f.sodate)
-FROM `data-lake`.fact_sales f
+FROM `data-lake`.fact_sales f FORCE INDEX (idx_optimize_sales_report)
 JOIN `data-lake`.dim_branch b ON f.sotowhs = b.code
 WHERE f.iprod IN ({bc_list})
   AND f.sodate >= '2026-05-01'
   AND f.solinetype NOT IN ('C','R')
-  AND CAST(f.sotowhs AS UNSIGNED) <= 500
+  AND f.sotowhs >= '001' AND f.sotowhs <= '500'
 GROUP BY b.dm, b.name, f.sotowhs, f.iprod, DATE(f.sodate)
 ORDER BY DATE(f.sodate), b.dm, b.name, f.iprod
 """
