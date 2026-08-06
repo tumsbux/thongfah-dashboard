@@ -25,6 +25,9 @@ jobs:
         run: |
           git config user.name "dashboard-bot"
           git config user.email "bot@noreply"
-          git add data.json
-          git diff --staged --quiet && echo "no change" || git commit -m "auto: update data.json $(date -u '+%Y-%m-%d')"
+          if [ -f data.json ]; then
+            git rm data.json
+          fi
+          git add data.json.gz
+          git diff --staged --quiet && echo "no change" || git commit -m "auto: update data.json.gz $(date -u '+%Y-%m-%d')"
           git push

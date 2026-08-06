@@ -76,7 +76,7 @@ tbody td.r,tfoot td.r{text-align:right}
     <div class="cards">
       <div class="card"><div class="card-label">ยอดขายสุทธิ (บาท)</div><div class="card-value" id="c-sales"></div><div class="card-sub" id="c-sales-s"></div></div>
       <div class="card green"><div class="card-label">GP รวม (บาท)</div><div class="card-value" id="c-gp"></div><div class="card-sub" id="c-gp-s"></div></div>
-      <div class="card orange"><div class="card-label">ส่วนลดรวม (บาท)</div><div class="card-value" id="c-disc"></div><div class="card-sub" id="c-disc-s"></div></div>
+      <div class="card orange"><div class="card-label" title="ส่วนลดท้ายบิล (prorated จาก sodisc = sodisc_bill+score+coupon+perc)">ลดท้ายบิล (บาท)</div><div class="card-value" id="c-disc"></div><div class="card-sub" id="c-disc-s"></div></div>
       <div class="card purple"><div class="card-label">จำนวนขาย (ชิ้น)</div><div class="card-value" id="c-qty"></div><div class="card-sub" id="c-qty-s"></div></div>
       <div class="card teal"><div class="card-label">ร้านที่ขาย</div><div class="card-value" id="c-stores"></div><div class="card-sub" id="c-stores-s"></div></div>
     </div>
@@ -146,8 +146,8 @@ tbody td.r,tfoot td.r{text-align:right}
 </div>
 
 <script>
-// Array fields: [dm, store, store_code, barcode, product, qty, solineamt, discount, net_sales, cost, gp, gp_pct, promo, rm, date]
-const DM=0,ST=1,SC=2,BC=3,PR=4,QT=5,LA=6,DS=7,NS=8,CO=9,GP=10,GP_PCT=11,PT=12,RM=13,DT=14;
+// Array fields: [dm, store, store_code, barcode, product, qty, solineamt(ยอดก่อนลดบิล), bill_disc(ส่วนลดท้ายบิล=prorated_discount), net_sales(ยอดสุทธิ=solineamt-bill_disc), cost, gp, gp_pct, promo, rm, date, sku_disc(ส่วนลดรายการ)]
+const DM=0,ST=1,SC=2,BC=3,PR=4,QT=5,LA=6,DS=7,NS=8,CO=9,GP=10,GP_PCT=11,PT=12,RM=13,DT=14,SD=15;
 let RAW=[],filtered=[],sortCol=null,sortAsc=true,curView='detail';
 let chStore=null,chProd=null;
 
@@ -155,24 +155,76 @@ const fmt=n=>(+n||0).toLocaleString('th-TH',{maximumFractionDigits:0});
 const fmtD=n=>(+n||0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2});
 const gpC=p=>p>=30?'gp-good':p>=15?'gp-mid':'gp-low';
 
-fetch('data.json').then(r=>r.json()).then(data=>{
-  RAW=data; filtered=[...RAW];
-  document.getElementById('loading-area').style.display='none';
-  document.getElementById('main-area').style.display='block';
-  const _bd=RAW.map(r=>r[DT]).filter(Boolean).sort();
-  document.getElementById('data-badge').textContent=RAW.length.toLocaleString()+' รายการ | '+(_bd[0]||'1 พ.ค.')+' – '+(_bd[_bd.length-1]||'');
-  const _dates=RAW.map(r=>r[DT]).filter(Boolean).sort();
-  if(_dates.length){
-    const _mn=_dates[0],_mx=_dates[_dates.length-1];
-    const fdf=document.getElementById('f-date-from');
-    const fdt=document.getElementById('f-date-to');
-    fdf.min=_mn; fdf.max=_mx; fdf.value=_mn;
-    fdt.min=_mn; fdt.max=_mx; fdt.value=_mx;
+async function loadData() {
+  try {
+    const response = await fetch('data.json.gz');
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    let rawData;
+    if (typeof DecompressionStream !== 'undefined') {
+      const ds = new DecompressionStream('gzip');
+      const decompressedStream = response.body.pipeThrough(ds);
+      const jsonString = await new Response(decompressedStream).text();
+      rawData = JSON.parse(jsonString);
+    } else {
+      rawData = await response.json();
+    }
+
+    if (rawData.rows && rawData.stores && rawData.products) {
+      const lookupStores = rawData.stores;
+      const lookupProducts = rawData.products;
+      RAW = rawData.rows.map(r => {
+        const sc = r[0];
+        const bc = r[1];
+        const storeInfo = lookupStores[sc] || ['', '', ''];
+        const prodInfo = lookupProducts[bc] || ['', ''];
+        return [
+          storeInfo[0], // dm
+          storeInfo[1], // store
+          sc,           // sc
+          bc,           // bc
+          prodInfo[0],  // prod
+          r[2],         // qty
+          r[3],         // solineamt
+          r[4],         // disc
+          r[5],         // ns
+          r[6],         // cost
+          r[7],         // gp
+          r[8],         // gp_pct
+          prodInfo[1],  // promo
+          storeInfo[2], // rm
+          r[9],         // date
+          r[10]         // sku_disc
+        ];
+      });
+    } else {
+      RAW = rawData;
+    }
+
+    filtered = [...RAW];
+    document.getElementById('loading-area').style.display = 'none';
+    document.getElementById('main-area').style.display = 'block';
+    
+    const _bd = RAW.map(r => r[DT]).filter(Boolean).sort();
+    document.getElementById('data-badge').textContent = RAW.length.toLocaleString() + ' รายการ | ' + (_bd[0] || '1 พ.ค.') + ' – ' + (_bd[_bd.length - 1] || '');
+    
+    const _dates = RAW.map(r => r[DT]).filter(Boolean).sort();
+    if (_dates.length) {
+      const _mn = _dates[0], _mx = _dates[_dates.length - 1];
+      const fdf = document.getElementById('f-date-from');
+      const fdt = document.getElementById('f-date-to');
+      fdf.min = _mn; fdf.max = _mx; fdf.value = _mn;
+      fdt.min = _mn; fdt.max = _mx; fdt.value = _mx;
+    }
+    initFilters(); renderAll();
+  } catch (e) {
+    document.getElementById('loading-area').innerHTML = '<div style="color:#e02424;padding:20px">โหลดข้อมูลไม่สำเร็จ: ' + e.message + '</div>';
   }
-  initFilters(); renderAll();
-}).catch(e=>{
-  document.getElementById('loading-area').innerHTML='<div style="color:#e02424;padding:20px">โหลดข้อมูลไม่สำเร็จ: '+e.message+'</div>';
-});
+}
+
+loadData();
 
 function initFilters(){
   const dms=[...new Set(RAW.map(r=>r[DM]))].sort();
@@ -218,8 +270,8 @@ function setView(v){
 function aggBy(fi,fi2){
   const m={};
   filtered.forEach(r=>{
-    const k=r[fi]; if(!m[k])m[k]={k,l2:fi2!=null?r[fi2]:'',q:0,la:0,d:0,ns:0,c:0,g:0};
-    const x=m[k]; x.q+=+r[QT]; x.la+=+r[LA]; x.d+=+r[DS]; x.ns+=+r[NS]; x.c+=+r[CO]; x.g+=+r[GP];
+    const k=r[fi]; if(!m[k])m[k]={k,l2:fi2!=null?r[fi2]:'',q:0,la:0,d:0,sd:0,ns:0,c:0,g:0};
+    const x=m[k]; x.q+=+r[QT]; x.la+=+r[LA]; x.d+=+r[DS]; x.sd+=+(r[SD]||0); x.ns+=+r[NS]; x.c+=+r[CO]; x.g+=+r[GP];
   });
   return Object.values(m).map(x=>{x.gp=x.ns?x.g/x.ns*100:0;return x;});
 }
@@ -228,17 +280,18 @@ function renderCards(){
   const ns=filtered.reduce((a,r)=>a+(+r[NS]),0);
   const gp=filtered.reduce((a,r)=>a+(+r[GP]),0);
   const disc=filtered.reduce((a,r)=>a+(+r[DS]),0);
+  const skuDisc=filtered.reduce((a,r)=>a+(+(r[SD]||0)),0);
   const qty=filtered.reduce((a,r)=>a+(+r[QT]),0);
   const la=filtered.reduce((a,r)=>a+(+r[LA]),0);
   const stores=new Set(filtered.map(r=>r[ST])).size;
   const dms=new Set(filtered.map(r=>r[DM])).size;
   const gpp=ns?gp/ns*100:0;
   document.getElementById('c-sales').textContent='฿'+fmt(ns);
-  document.getElementById('c-sales-s').textContent='solineamt ฿'+fmt(la);
+  document.getElementById('c-sales-s').textContent='ยอดก่อนลดบิล ฿'+fmt(la);
   document.getElementById('c-gp').textContent='฿'+fmt(gp);
   document.getElementById('c-gp-s').textContent='%GP '+fmtD(gpp)+'%';
   document.getElementById('c-disc').textContent='฿'+fmt(disc);
-  document.getElementById('c-disc-s').textContent=(la?fmtD(disc/la*100):'0.00')+'% ของ solineamt';
+  document.getElementById('c-disc-s').textContent='ลดรายการ ฿'+fmt(skuDisc)+' ('+(la?fmtD(disc/la*100):'0.00')+'% ของยอดก่อนลดบิล)';
   document.getElementById('c-qty').textContent=fmt(qty);
   document.getElementById('c-qty-s').textContent=new Set(filtered.map(r=>r[BC])).size+' รายการสินค้า';
   document.getElementById('c-stores').textContent=fmt(stores);
@@ -274,14 +327,14 @@ function renderCharts(){
 const VCOLS={
   detail:[
     {l:'DM',k:'dm',r:0},{l:'ร้าน',k:'store',r:0},{l:'บาร์โค้ด',k:'bc',r:0},{l:'ชื่อสินค้า',k:'prod',r:0},
-    {l:'จำนวน(ชิ้น)',k:'qty',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'disc',r:1},
+    {l:'จำนวน(ชิ้น)',k:'qty',r:1},{l:'ยอดก่อนลดบิล(฿)',k:'la',r:1},{l:'ลดท้ายบิล(฿)',k:'disc',r:1},{l:'ลดรายการ(฿)',k:'sd',r:1},
     {l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'gp',r:1},{l:'%GP',k:'gpp',r:1}
   ],
-  store:[{l:'ร้าน',k:'k',r:0},{l:'DM',k:'l2',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'d',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}],
-  prod:[{l:'บาร์โค้ด',k:'k',r:0},{l:'ชื่อสินค้า',k:'l2',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'d',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}],
-  dm:[{l:'DM',k:'k',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'d',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}],
-  promo:[{l:'ประเภทโปร',k:'k',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'d',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}],
-  rm:[{l:'RM',k:'k',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'solineamt(฿)',k:'la',r:1},{l:'ส่วนลด(฿)',k:'d',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}]
+  store:[{l:'ร้าน',k:'k',r:0},{l:'DM',k:'l2',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'ยอดก่อนลดบิล(฿)',k:'la',r:1},{l:'ลดท้ายบิล(฿)',k:'d',r:1},{l:'ลดรายการ(฿)',k:'sd',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}],
+  prod:[{l:'บาร์โค้ด',k:'k',r:0},{l:'ชื่อสินค้า',k:'l2',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'ยอดก่อนลดบิล(฿)',k:'la',r:1},{l:'ลดท้ายบิล(฿)',k:'d',r:1},{l:'ลดรายการ(฿)',k:'sd',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}],
+  dm:[{l:'DM',k:'k',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'ยอดก่อนลดบิล(฿)',k:'la',r:1},{l:'ลดท้ายบิล(฿)',k:'d',r:1},{l:'ลดรายการ(฿)',k:'sd',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}],
+  promo:[{l:'ประเภทโปร',k:'k',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'ยอดก่อนลดบิล(฿)',k:'la',r:1},{l:'ลดท้ายบิล(฿)',k:'d',r:1},{l:'ลดรายการ(฿)',k:'sd',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}],
+  rm:[{l:'RM',k:'k',r:0},{l:'จำนวน(ชิ้น)',k:'q',r:1},{l:'ยอดก่อนลดบิล(฿)',k:'la',r:1},{l:'ลดท้ายบิล(฿)',k:'d',r:1},{l:'ลดรายการ(฿)',k:'sd',r:1},{l:'ยอดสุทธิ(฿)',k:'ns',r:1},{l:'GP(฿)',k:'g',r:1},{l:'%GP',k:'gp',r:1}]
 };
 
 function getViewData(){

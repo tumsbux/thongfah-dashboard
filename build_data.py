@@ -5,12 +5,12 @@ Array: [dm, store, sc, bc, prod, qty, solineamt, disc, ns, cost, gp, gp_pct, pro
 Run local:  py build_data.py
 Run in GHA: set env vars MYSQL_HOST MYSQL_PORT MYSQL_USER MYSQL_PASSWORD
 """
-import json, os
+import json, os, gzip
 import mysql.connector
 
 IN_GHA    = 'GITHUB_ACTIONS' in os.environ
 DIR       = os.path.dirname(os.path.abspath(__file__))
-DATA_PATH = 'data.json' if IN_GHA else os.path.join(DIR, 'data.json')
+DATA_PATH = 'data.json.gz' if IN_GHA else os.path.join(DIR, 'data.json.gz')
 
 # ── MySQL credentials: env vars (GHA) → db_config.json (local) ──
 cfg = {}
@@ -99,21 +99,52 @@ SC_RM = {
 '237':'จินตนา อินทะเสโน','238':'สุพรรษา นามตาปี',
 }
 
-# ── 1. Extract barcode/product/promo from existing data.json ──
-print("1. Loading existing data.json for barcode/product/promo lookup...")
-with open(DATA_PATH, 'r', encoding='utf-8') as f:
-    old_rows = json.load(f)
+# ── 1. Extract barcode/product/promo from existing data.json.gz ──
+print("1. Loading existing data.json.gz for barcode/product/promo lookup...")
+old_data = {}
+if os.path.exists(DATA_PATH):
+    try:
+        with gzip.open(DATA_PATH, 'rt', encoding='utf-8') as f:
+            old_data = json.load(f)
+    except Exception as e:
+        print(f"   Warning: failed to load gzip: {e}. Trying raw json...")
+        plain_path = DATA_PATH.replace('.gz', '')
+        if os.path.exists(plain_path):
+            try:
+                with open(plain_path, 'r', encoding='utf-8') as f:
+                    old_data = json.load(f)
+            except Exception as e2:
+                print(f"   Error loading raw json: {e2}")
+
+if not old_data:
+    # Check for plain data.json directly if data.json.gz doesn't exist
+    plain_path = DATA_PATH.replace('.gz', '')
+    if os.path.exists(plain_path):
+        try:
+            with open(plain_path, 'r', encoding='utf-8') as f:
+                old_data = json.load(f)
+        except Exception as e:
+            print(f"   Error loading raw json: {e}")
 
 BC_PROD  = {}
 BC_PROMO = {}
-for r in old_rows:
-    bc    = r[3]
-    prod  = r[4] if len(r) > 4 else ''
-    promo = r[12] if len(r) > 12 else ''
-    if bc not in BC_PROD and prod:
-        BC_PROD[bc] = prod
-    if bc not in BC_PROMO and promo:
-        BC_PROMO[bc] = promo
+
+if isinstance(old_data, dict):
+    products = old_data.get('products', {})
+    for bc, info in products.items():
+        if len(info) > 0 and info[0]:
+            BC_PROD[bc] = info[0]
+        if len(info) > 1 and info[1]:
+            BC_PROMO[bc] = info[1]
+elif isinstance(old_data, list):
+    for r in old_data:
+        bc    = r[3]
+        prod  = r[4] if len(r) > 4 else ''
+        promo = r[12] if len(r) > 12 else ''
+        if bc not in BC_PROD and prod:
+            BC_PROD[bc] = prod
+        if bc not in BC_PROMO and promo:
+            BC_PROMO[bc] = promo
 
 barcodes = list(BC_PROD.keys())
 print(f"   Barcodes: {len(barcodes)}, with promo: {len(BC_PROMO)}")
@@ -133,7 +164,8 @@ SQL = f"""
 SELECT
     b.dm, b.name, f.sotowhs, f.iprod,
     SUM(f.net_qty), SUM(f.solineamt), SUM(f.prorated_discount),
-    SUM(f.net_sales_amt), SUM(f.total_cost), DATE(f.sodate)
+    SUM(f.net_sales_amt), SUM(f.total_cost), DATE(f.sodate),
+    SUM(f.soqty * f.sopricdisc) AS sku_disc  -- ส่วนลดรายการ (line-level discount)
 FROM `data-lake`.fact_sales f FORCE INDEX (idx_optimize_sales_report)
 JOIN `data-lake`.dim_branch b ON f.sotowhs = b.code
 WHERE f.iprod IN ({bc_list})
@@ -151,9 +183,12 @@ print(f"   Rows: {len(db_rows)}")
 
 # ── 3. Build output ──
 print("3. Building output rows...")
-out = []
+out_rows = []
+stores_dict = {}
+products_dict = {}
+
 for r in db_rows:
-    dm, store, sc, bc, qty, solineamt, disc, ns, cost, sodate = r
+    dm, store, sc, bc, qty, solineamt, disc, ns, cost, sodate, sku_disc = r
     sc_str    = str(sc).strip().zfill(3)
     prod      = BC_PROD.get(bc, bc)
     promo     = BC_PROMO.get(bc, '')
@@ -163,20 +198,44 @@ for r in db_rows:
     disc      = float(disc or 0)
     ns        = float(ns or 0)
     cost      = float(cost or 0)
+    sku_disc  = float(sku_disc or 0)
     gp        = ns - cost
     gp_pct    = round(gp / ns * 100, 2) if ns else 0
     date_str  = sodate.strftime('%Y-%m-%d') if hasattr(sodate, 'strftime') else str(sodate)
-    out.append([dm, store, sc_str, bc, prod,
-                round(qty), round(solineamt,2), round(disc,2),
-                round(ns,2), round(cost,2), round(gp,2), gp_pct,
-                promo, rm, date_str])
 
-if out:
-    dates = sorted(set(r[14] for r in out))
-    print(f"   Output: {len(out)} rows | {dates[0]} — {dates[-1]}")
+    # Populate lookups
+    if sc_str not in stores_dict:
+        stores_dict[sc_str] = [dm, store, rm]
+    if bc not in products_dict:
+        products_dict[bc] = [prod, promo]
+
+    # Save minimized row: [sc_str, bc, qty, solineamt, disc, ns, cost, gp, gp_pct, date_str, sku_disc]
+    out_rows.append([
+        sc_str,
+        bc,
+        round(qty),
+        round(solineamt, 2),
+        round(disc, 2),
+        round(ns, 2),
+        round(cost, 2),
+        round(gp, 2),
+        gp_pct,
+        date_str,
+        round(sku_disc, 2)
+    ])
+
+output_data = {
+    "stores": stores_dict,
+    "products": products_dict,
+    "rows": out_rows
+}
+
+if out_rows:
+    dates = sorted(set(r[9] for r in out_rows))
+    print(f"   Output: {len(out_rows)} rows | {dates[0]} — {dates[-1]}")
 
 # ── 4. Save ──
-with open(DATA_PATH, 'w', encoding='utf-8') as f:
-    json.dump(out, f, ensure_ascii=False, separators=(',', ':'))
+with gzip.open(DATA_PATH, 'wt', encoding='utf-8') as f:
+    json.dump(output_data, f, ensure_ascii=False, separators=(',', ':'))
 print(f"   Saved: {os.path.getsize(DATA_PATH)//1024} KB")
 print("Done.")
